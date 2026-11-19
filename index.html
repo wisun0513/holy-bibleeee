@@ -108,9 +108,21 @@ header .head { padding-top: calc(16px + env(safe-area-inset-top)); }
   .brand { font-size: 19px; }
   .site-nav { gap: 6px; }
   .site-nav button { padding: 7px 10px; font-size: 14px; }
-  .shell { display: block; margin: 12px auto; padding: 0 10px; }
-  .side { display: none; }
-  .main { padding: 16px 12px; min-height: 0; }
+  #studyShell {
+    width: 100%;
+    max-width: none;
+    grid-template-columns: minmax(0, 1fr);
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  #studyShell > .side { display: none; }
+  #studyShell > .main {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 16px 12px;
+    border-radius: 0;
+  }
   .home { margin: 16px auto; padding: 0 10px; }
   .hero { grid-template-columns: minmax(0, 1fr); padding: 20px 16px; }
   .hero h1 { font-size: clamp(24px, 7vw, 32px); }
