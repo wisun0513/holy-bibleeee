@@ -160,7 +160,8 @@ header .head { padding-top: calc(16px + env(safe-area-inset-top)); }
   footer { padding-bottom: 64px; }
 }
 .recite-mistake{color:#a31826;font-weight:800}
-.recite-replace{text-decoration:underline;text-underline-offset:.2em}
+.recite-edit-target{border:1px solid currentColor;border-radius:50%;padding-inline:.12em}
+.recite-symbol{width:1.4em;height:.85em;vertical-align:.13em;overflow:visible}
 .recite-mark{font-size:.82em;margin-inline:2px}
 #reciteResult .study-source{white-space:pre-wrap;overflow-wrap:anywhere}
 .verse-picker{display:flex;gap:4px;align-items:center;max-width:100%}
@@ -402,6 +403,16 @@ renderMemory=function(){
  <div class="study-actions">${[['easy','쉬움 · 일부 가리기'],['half','보통 · 절반 가리기'],['all','어려움 · 전체 가리기']].map(a=>`<button class="${hideLevel===a[0]?'selected':''}" onclick="hideLevel='${a[0]}';showAnswers=false;renderMemory()">${a[1]}</button>`).join('')}</div>
  <div class="study-card"><span class="pill">${safe(book)} ${chapter}:${v.v}</span><p class="study-source">${hiddenText(v.t)}</p><div class="study-actions"><button onclick="showAnswers=!showAnswers;renderMemory()">${showAnswers?'정답 다시 가리기':'원문 확인'}</button><button class="primary" onclick="reciteText='';reciteChecked=false;goStudy('recite')">이 절 암송 테스트</button></div></div>`;
 };
+function reciteSymbol(kind){
+ const marks={
+  insert:['삽입','M1 3 Q1 8 6 8 H9 L12 12 L15 8 H18 Q23 8 23 3'],
+  delete:['삭제','M1 11 C8 11 14 0 8 1 C3 2 8 12 15 7 C22 2 14 0 14 4 Q14 10 24 5'],
+  replace:['수정','M8 9 L16 4 M8 9 L8 6 M8 9 L11 9 M7 10 A3 3 0 1 1 1 10 A3 3 0 1 1 7 10 M23 3 A3 3 0 1 1 17 3 A3 3 0 1 1 23 3'],
+  move:['자리 바꾸기','M2 2 C0 19 16 -5 22 4 Q25 7 22 11']
+ };
+ const [label,path]=marks[kind];
+ return `<svg class="recite-symbol" role="img" aria-label="${label}" viewBox="0 0 25 14"><path d="${path}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
 function reciteCorrections(answer, source){
  const original=source.normalize('NFC');
  const typed=answer.normalize('NFC');
@@ -425,10 +436,10 @@ function reciteCorrections(answer, source){
   if(target===undefined)allWordsMatch=false;
   if(target===undefined||target===position)return safe(part);
   moved=true;
-  return `<strong class="recite-mistake">${safe(part)}<span class="recite-mark" aria-label="${target}번째 단어로 이동">↔${target}</span></strong>`;
+  return `<strong class="recite-mistake">${safe(part)}<span class="recite-mark" aria-label="${target}번째 단어로 이동">${reciteSymbol('move')}${target}</span></strong>`;
  }).join('');
  if(expected!==actual&&allWordsMatch&&position===wordCount&&moved){
-  return {answer:reordered,notes:'↔ 뒤 숫자는 원문에서 그 단어가 들어갈 순서예요.'};
+  return {answer:reordered,notes:reciteSymbol('move')+' 뒤 숫자는 원문의 단어 자리예요.'};
  }
  const expectedChars=Array.from(original).filter(char=>normalizeText(char));
  const insertions=new Map(), replacements=new Map(), deletions=new Set();
@@ -458,7 +469,7 @@ function reciteCorrections(answer, source){
  }
  function insertionAt(index){
   const letters=insertions.get(index);
-  return letters?`<strong class="recite-mistake"><span class="recite-mark" aria-label="삽입">∧</span>${safe(letters)}</strong>`:'';
+  return letters?`<strong class="recite-mistake">${reciteSymbol('insert')}${safe(letters)}</strong>`:'';
  }
  let index=0;
  const annotated=Array.from(typed,char=>{
@@ -468,14 +479,14 @@ function reciteCorrections(answer, source){
   const replacement=replacements.get(index);
   const deleted=deletions.has(index++);
   if(replacement){
-   return insertion+`<strong class="recite-mistake"><del>${escaped}</del><span class="recite-mark" aria-label="교체">→</span><span class="recite-replace">${safe(replacement)}</span></strong>`;
+   return insertion+`<strong class="recite-mistake"><span class="recite-edit-target">${escaped}</span>${reciteSymbol('replace')}<span class="recite-edit-target">${safe(replacement)}</span></strong>`;
   }
-  return insertion+(deleted?`<strong class="recite-mistake"><del>${escaped}</del></strong>`:escaped);
+  return insertion+(deleted?`<strong class="recite-mistake"><span class="recite-edit-target">${escaped}</span>${reciteSymbol('delete')}</strong>`:escaped);
  }).join('')+insertionAt(index);
  const notes=[];
- if(insertions.size)notes.push('∧ 빠뜨린 글자');
- if(replacements.size)notes.push('→ 바꿔 쓸 글자');
- if(deletions.size)notes.push('취소선 더 적은 글자');
+ if(insertions.size)notes.push(reciteSymbol('insert')+' 빠뜨린 글자');
+ if(replacements.size)notes.push(reciteSymbol('replace')+' 바꿔 쓸 글자');
+ if(deletions.size)notes.push(reciteSymbol('delete')+' 더 적은 글자');
  return {answer:annotated,notes:notes.join(' · ')};
 }
 
