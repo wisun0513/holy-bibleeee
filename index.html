@@ -160,6 +160,9 @@ header .head { padding-top: calc(16px + env(safe-area-inset-top)); }
   footer { padding-bottom: 64px; }
 }
 .recite-mistake{color:#a31826;font-weight:800}
+.recite-replace{text-decoration:underline;text-underline-offset:.2em}
+.recite-mark{font-size:.82em;margin-inline:2px}
+#reciteResult .study-source{white-space:pre-wrap;overflow-wrap:anywhere}
 .verse-picker{display:flex;gap:4px;align-items:center;max-width:100%}
 .verse-picker button{padding:7px 6px;white-space:nowrap;font-size:.875rem;min-width:0}
 .verse-picker button[aria-pressed="true"]{background:#355945;color:#fff;border-color:#355945}
@@ -403,7 +406,32 @@ function reciteCorrections(answer, source){
  const original=source.normalize('NFC');
  const typed=answer.normalize('NFC');
  const expected=normalizeText(original), actual=normalizeText(typed);
- const missing=new Set(), extra=new Set();
+ // Pair repeated words in occurrence order so each destination is unique.
+ const words=original.split(/(\s+)/), answerParts=typed.split(/(\s+)/);
+ const targets=new Map();
+ let wordCount=0;
+ for(const part of words){
+  const key=normalizeText(part);
+  if(!key)continue;
+  if(!targets.has(key))targets.set(key,[]);
+  targets.get(key).push(++wordCount);
+ }
+ let position=0,moved=false,allWordsMatch=true;
+ const reordered=answerParts.map(part=>{
+  const key=normalizeText(part);
+  if(!key)return safe(part);
+  position++;
+  const target=targets.get(key)?.shift();
+  if(target===undefined)allWordsMatch=false;
+  if(target===undefined||target===position)return safe(part);
+  moved=true;
+  return `<strong class="recite-mistake">${safe(part)}<span class="recite-mark" aria-label="${target}번째 단어로 이동">↔${target}</span></strong>`;
+ }).join('');
+ if(expected!==actual&&allWordsMatch&&position===wordCount&&moved){
+  return {answer:reordered,notes:'↔ 뒤 숫자는 원문에서 그 단어가 들어갈 순서예요.'};
+ }
+ const expectedChars=Array.from(original).filter(char=>normalizeText(char));
+ const insertions=new Map(), replacements=new Map(), deletions=new Set();
  if(expected!==actual){
   const distances=[Uint32Array.from({length:expected.length+1},(_,i)=>i)];
   for(let i=1;i<=actual.length;i++){
@@ -420,32 +448,41 @@ function reciteCorrections(answer, source){
    if(i&&j&&actual[i-1]===expected[j-1]){
     i--;j--;
    }else if(i&&j&&distances[i][j]===distances[i-1][j-1]+1){
-    missing.add(--j);i--;
+    replacements.set(--i,expectedChars[--j]);
    }else if(j&&distances[i][j]===distances[i][j-1]+1){
-    missing.add(--j);
+    insertions.set(i,expectedChars[--j]+(insertions.get(i)??''));
    }else{
-    extra.add(--i);
+    deletions.add(--i);
    }
   }
  }
- function highlight(text, positions){
-  let index=0;
-  return Array.from(text,char=>{
-   const escaped=safe(char);
-   return normalizeText(char)&&positions.has(index++)
-    ? '<strong class="recite-mistake">'+escaped+'</strong>' : escaped;
-  }).join('');
+ function insertionAt(index){
+  const letters=insertions.get(index);
+  return letters?`<strong class="recite-mistake"><span class="recite-mark" aria-label="삽입">∧</span>${safe(letters)}</strong>`:'';
  }
- return {
-  original:highlight(original,missing),
-  answerWithExtras:extra.size?highlight(typed,extra):'',
-  hasCorrections:missing.size>0||extra.size>0
- };
+ let index=0;
+ const annotated=Array.from(typed,char=>{
+  const escaped=safe(char);
+  if(!normalizeText(char))return escaped;
+  const insertion=insertionAt(index);
+  const replacement=replacements.get(index);
+  const deleted=deletions.has(index++);
+  if(replacement){
+   return insertion+`<strong class="recite-mistake"><del>${escaped}</del><span class="recite-mark" aria-label="교체">→</span><span class="recite-replace">${safe(replacement)}</span></strong>`;
+  }
+  return insertion+(deleted?`<strong class="recite-mistake"><del>${escaped}</del></strong>`:escaped);
+ }).join('')+insertionAt(index);
+ const notes=[];
+ if(insertions.size)notes.push('∧ 빠뜨린 글자');
+ if(replacements.size)notes.push('→ 바꿔 쓸 글자');
+ if(deletions.size)notes.push('취소선 더 적은 글자');
+ return {answer:annotated,notes:notes.join(' · ')};
 }
+
 showReciteResult=function(v){
  const result=Math.round(Math.max(0,compareChars(reciteText,v.t))*100);
  const corrections=reciteCorrections(reciteText,v.t);
- el('reciteResult').innerHTML=`<div class="info-message"><b>암송 정확도 ${result}%</b><div class="smallnote">정확도는 글자 편집 거리로 계산한 참고 점수입니다.</div></div><p><b>성경 원문</b></p><div class="study-source">${corrections.original}</div>${corrections.answerWithExtras?`<p><b>내 답안 · 더 적은 글자 표시</b></p><div class="study-source">${corrections.answerWithExtras}</div>`:''}${corrections.hasCorrections?'<p class="smallnote">원문에서 틀리거나 빠뜨린 글자와, 답안에 더 적은 글자를 빨간색 굵은 글씨로 표시했어요.</p>':''}<div class="study-actions"><button onclick="reciteText='';reciteChecked=false;renderRecite()">다시 연습</button></div>`;
+ el('reciteResult').innerHTML=`<div class="info-message"><b>암송 정확도 ${result}%</b><div class="smallnote">정확도는 글자 편집 거리로 계산한 참고 점수입니다.</div></div><p><b>내 답안</b></p><div class="study-source">${corrections.answer}</div>${corrections.notes?`<p class="smallnote">${corrections.notes}</p>`:''}<p><b>성경 원문</b></p><div class="study-source">${safe(v.t)}</div><div class="study-actions"><button onclick="reciteText='';reciteChecked=false;renderRecite()">다시 연습</button></div>`;
 };
 // Show all 66 books and reading links as before; combine practice on home in one card.
 buildHome=function(){
